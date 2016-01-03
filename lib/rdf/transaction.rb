@@ -107,7 +107,9 @@ module RDF
       @repository = repository
       @options = options.dup
       @mutable = !!(@options.delete(:mutable) || false)
-
+      
+      @changes = RDF::Changeset.new
+      
       if block_given?
         case block.arity
           when 1 then block.call(self)
@@ -124,7 +126,7 @@ module RDF
     # @see    #changes
     # @since  2.0.0
     def buffered?
-      !(self.changes.nil?)
+      !(self.changes.empty?)
     end
 
     ##
@@ -133,6 +135,15 @@ module RDF
     # @return [Boolean]
     # @see     RDF::Writable#writable?
     def writable?
+      @mutable
+    end
+
+    ##
+    # Returns `true` if this is a read/write transaction, `false` otherwise.
+    #
+    # @return [Boolean]
+    # @see     RDF::Writable#mutable?
+    def mutable?
       @mutable
     end
 
@@ -163,6 +174,14 @@ module RDF
       $stderr.puts(inspect)
     end
 
+    ##
+    # Executes the transaction
+    #
+    # @return [Boolean] `true` if the changes are successfully applied.
+    def execute
+      @changes.apply(@repository)
+    end
+
     protected
 
     ##
@@ -172,7 +191,7 @@ module RDF
     # @return [void]
     # @see    RDF::Writable#insert_statement
     def insert_statement(statement)
-      @changes.inserts << statement
+      @changes.insert(statement)
     end
 
     ##
@@ -182,7 +201,7 @@ module RDF
     # @return [void]
     # @see    RDF::Mutable#delete_statement
     def delete_statement(statement)
-      @changes.deletes << statement
+      @changes.delete(statement)
     end
 
     undef_method :load, :update, :clear
