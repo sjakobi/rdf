@@ -240,6 +240,26 @@ module RDF
       end
 
       ##
+      # @see RDF::Mutable#apply_changeset
+      def apply_changeset(changeset)
+        return super unless supports?(:transactions)
+        return true if changeset.empty?
+        new_data = @data.dup
+
+        changeset.deletes.each_statement do |st|
+          struct_delete_statement(new_data, st)
+        end
+
+        changeset.inserts.each_statement do |st|
+          struct_insert_statement(new_data, st)
+        end
+        
+        @data = new_data
+
+        super
+      end
+
+      ##
       # @private
       # @see RDF::Enumerable#supports?
       def supports?(feature)
@@ -250,8 +270,9 @@ module RDF
             warn "[DEPRECATION] the :context feature is deprecated in RDF.rb 2.0; use :graph_name instead. Called from #{Gem.location_of_caller.join(':')}"
             @options[:with_context] || @options[:with_graph_name]
           when :graph_name   then @options[:with_graph_name]
-          when :inference then false  # forward-chaining inference
-          when :validity  then @options.fetch(:with_validity, true)
+          when :inference    then false  # forward-chaining inference
+          when :validity     then @options.fetch(:with_validity, true)
+          when :transactions then @options.fetch(:with_transactions, false)
           else false
         end
       end
@@ -282,12 +303,7 @@ module RDF
       # @private
       # @see RDF::Enumerable#has_statement?
       def has_statement?(statement)
-        s, p, o, g = statement.to_quad
-        g ||= DEFAULT_GRAPH
-        @data.has_key?(g) &&
-          @data[g].has_key?(s) &&
-          @data[g][s].has_key?(p) &&
-          @data[g][s][p].include?(o)
+        struct_has_statement?(@data, statement)
       end
 
       ##
@@ -418,30 +434,47 @@ module RDF
       # @private
       # @see RDF::Mutable#insert
       def insert_statement(statement)
-        raise ArgumentError, "Statement #{statement.inspect} is incomplete" if statement.incomplete?
-        unless has_statement?(statement)
-          s, p, o, c = statement.to_quad
-          c = DEFAULT_GRAPH unless supports?(:graph_name)
-          c ||= DEFAULT_GRAPH
-          @data[c] ||= {}
-          @data[c][s] ||= {}
-          @data[c][s][p] ||= []
-          @data[c][s][p] << o
-        end
+        struct_insert_statement(@data, statement)
       end
 
       ##
       # @private
       # @see RDF::Mutable#delete
       def delete_statement(statement)
-        if has_statement?(statement)
+        struct_delete_statement(@data, statement)
+      end
+
+      def struct_has_statement?(struct, statement)
+        s, p, o, g = statement.to_quad
+        g ||= DEFAULT_GRAPH
+        struct.has_key?(g) &&
+          struct[g].has_key?(s) &&
+          struct[g][s].has_key?(p) &&
+          struct[g][s][p].include?(o)
+      end
+
+      def struct_insert_statement(struct, statement)
+        raise ArgumentError, "Statement #{statement.inspect} is incomplete" if statement.incomplete?
+        unless struct_has_statement?(struct, statement)
           s, p, o, c = statement.to_quad
           c = DEFAULT_GRAPH unless supports?(:graph_name)
           c ||= DEFAULT_GRAPH
-          @data[c][s][p].delete(o)
-          @data[c][s].delete(p) if @data[c][s][p].empty?
-          @data[c].delete(s) if @data[c][s].empty?
-          @data.delete(c) if @data[c].empty?
+          struct[c] ||= {}
+          struct[c][s] ||= {}
+          struct[c][s][p] ||= []
+          struct[c][s][p] << o
+        end
+      end
+
+      def struct_delete_statement(struct, statement)
+        if struct_has_statement?(struct, statement)
+          s, p, o, c = statement.to_quad
+          c = DEFAULT_GRAPH unless supports?(:graph_name)
+          c ||= DEFAULT_GRAPH
+          struct[c][s][p].delete(o)
+          struct[c][s].delete(p) if @data[c][s][p].empty?
+          struct[c].delete(s) if @data[c][s].empty?
+          struct.delete(c) if @data[c].empty?
         end
       end
 

@@ -20,4 +20,11 @@ describe RDF::Repository do
       let(:repository) { RDF::Repository.new(with_validity: false) }
     end
   end
+
+  context "A transactional repository" do
+    # @see lib/rdf/spec/repository.rb in rdf-spec
+    it_behaves_like 'an RDF::Repository' do
+      let(:repository) { RDF::Repository.new(with_transactions: true) }
+    end
+  end
 end
